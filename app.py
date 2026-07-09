@@ -41,9 +41,9 @@ if st.session_state.estado == 'configuracion':
     st.markdown("""
     <div class="instrucciones-api">
     <b>🔑 Instrucciones: ¿Cómo activar la Inteligencia Artificial?</b><br>
-    1. Entra a <a href="https://aistudio.google.com/" target="_blank">aistudio.google.com</a> e inicia sesión con tu Gmail.<br>
-    2. Haz clic a la izquierda en <b>Dashboard</b> y luego en <b>Copiar clave de api</b> (A la derecha de "Configurar la facturación" es donde encontrará esta opción).<br>
-    3. Copie el código largo y péguelo en la casilla "Tu clave de google api". <i>(Solo debes hacerlo una vez al abrir la página)</i>.
+    1. Entre a <a href="https://aistudio.google.com/" target="_blank">aistudio.google.com</a> e inicie sesión con su Gmail.<br>
+    2. Haga clic a la izquierda en <b>Dashboard</b> y luego en <b>Copiar clave de api</b> (A la derecha de "Configurar la facturación" es donde encontrará esta opción).<br>
+    3. Copie el código largo y péguelo en la casilla "Tu clave de google api". <i>(Solo debe hacerlo una vez al abrir la página)</i>.
     4. Esto es libre de costo y simplemente se conecta a la cuenta google de quién utilice la aplicación como intermediario a la I.A
     </div>
     """, unsafe_allow_html=True)
