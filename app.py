@@ -19,6 +19,7 @@ ESTILO_CSS = (
     "div.stButton > button { font-size: 22px; height: 60px; border-radius: 12px; "
     "background-color: #4CAF50; color: white; transition: all 0.3s ease; }"
     "div.stButton > button:hover { background-color: #45a049; }"
+    ".instrucciones-api { background-color: #e8f4f8; padding: 15px; border-radius: 10px; font-size: 15px; margin-bottom: 20px; border-left: 5px solid #2196F3; color: #333;}"
     "</style>"
 )
 st.markdown(ESTILO_CSS, unsafe_allow_html=True)
@@ -30,23 +31,37 @@ if 'tiempo_total' not in st.session_state: st.session_state.tiempo_total = 0
 if 'preguntas' not in st.session_state: st.session_state.preguntas = []
 if 'error_api' not in st.session_state: st.session_state.error_api = ""
 if 'evaluado' not in st.session_state: st.session_state.evaluado = False
-
-# Memoria permanente para la clave de Google API
 if 'api_key_guardada' not in st.session_state: st.session_state.api_key_guardada = ""
+if 'perfil_guardado' not in st.session_state: st.session_state.perfil_guardado = {}
 
 if st.session_state.estado == 'configuracion':
     st.title("⚙️ Área del Profesor")
+    
+    # INSTRUCCIONES CLARAS PARA LA PROFESORA
+    st.markdown("""
+    <div class="instrucciones-api">
+    <b>🔑 Instrucciones: ¿Cómo activar la Inteligencia Artificial?</b><br>
+    1. Entra a <a href="https://aistudio.google.com/" target="_blank">aistudio.google.com</a> e inicia sesión con tu Gmail.<br>
+    2. Haz clic en el botón azul <b>"Get API key"</b> (arriba a la izquierda) y luego en <b>"Create API key"</b>.<br>
+    3. Copia el código largo y pégalo en la casilla de abajo. <i>(Solo debes hacerlo una vez al abrir la página)</i>.
+    </div>
+    """, unsafe_allow_html=True)
     
     modo = st.radio("¿Cómo quieres crear las preguntas hoy?", 
                     ["🤖 Modo Inteligencia Artificial (Automático)", 
                      "✍️ Modo Manual (Yo escribo las preguntas)"])
     
+    st.markdown("### 🧑‍🎓 Perfil del Estudiante (Para Diagnóstico de Lectura)")
+    col1, col2, col3 = st.columns(3)
+    edad_alumno = col1.number_input("Edad:", min_value=4, max_value=25, value=10)
+    curso_alumno = col2.selectbox("Curso:", ["1º Básico", "2º Básico", "3º Básico", "4º Básico", "5º Básico", "6º Básico", "7º Básico", "8º Básico", "Educación Media"])
+    condicion_alumno = col3.selectbox("Condición:", ["Ninguna", "Discapacidad Intelectual Leve (DIL)", "Trastorno por Déficit Atencional (TDAH)", "DIL + TDAH", "Otra"])
+
     texto_input = st.text_area("📖 Pega el texto de lectura aquí:", height=150)
     
     if "Inteligencia Artificial" in modo:
-        # Carga la clave automáticamente si ya la habías puesto
         api_key_input = st.text_input("Tu clave de Google API:", type="password", value=st.session_state.api_key_guardada)
-        
+            
         niveles = [
             "1 - Muy Fácil (Búsqueda de información literal y evidente)",
             "2 - Fácil (Identificar personajes, lugares y acciones directas)",
@@ -58,9 +73,10 @@ if st.session_state.estado == 'configuracion':
         
         if st.button("🚀 Iniciar Actividad con IA"):
             if texto_input and api_key_input:
-                st.session_state.api_key_guardada = api_key_input # Guardamos la clave
+                st.session_state.api_key_guardada = api_key_input
                 st.session_state.texto = texto_input
                 st.session_state.dificultad = dificultad
+                st.session_state.perfil_guardado = {"edad": edad_alumno, "curso": curso_alumno, "condicion": condicion_alumno}
                 st.session_state.evaluado = False
                 st.session_state.estado = 'lectura'
                 st.rerun()
@@ -95,6 +111,7 @@ if st.session_state.estado == 'configuracion':
                 
                 st.session_state.preguntas = lista_final
                 st.session_state.texto = texto_input
+                st.session_state.perfil_guardado = {"edad": edad_alumno, "curso": curso_alumno, "condicion": condicion_alumno}
                 st.session_state.evaluado = False
                 st.session_state.estado = 'lectura' 
                 st.rerun()
@@ -158,7 +175,7 @@ elif st.session_state.estado == 'generando_ia':
             
             prompt = (
                 "Eres un experto en educación diferencial. Genera EXACTAMENTE 5 preguntas "
-                "sobre este texto para un niño con discapacidad intelectual leve. Nivel de dificultad: "
+                "sobre este texto para un niño con " + str(st.session_state.perfil_guardado['condicion']) + ". Nivel de dificultad: "
                 + str(st.session_state.dificultad) + ". Reglas: Lenguaje muy simple. 3 opciones por pregunta. "
                 "1 sola correcta. Devuelve ÚNICAMENTE un JSON válido con esta estructura exacta y nada más: "
                 '[{"pregunta": "¿Quién...?", "opciones": ["A", "B", "C"], "respuesta_correcta": "A"}]. '
@@ -178,13 +195,11 @@ elif st.session_state.estado == 'generando_ia':
                 
             datos_ia = json.loads(texto_limpio)
             
-            # Limpiar espacios invisibles para que la corrección sea perfecta
             preguntas_limpias = []
             for p in datos_ia:
                 opciones_limpias = [str(op).strip() for op in p.get("opciones", [])]
                 correcta_limpia = str(p.get("respuesta_correcta", "")).strip()
                 
-                # Nos aseguramos al 100% que la correcta esté en la lista
                 if correcta_limpia not in opciones_limpias and len(opciones_limpias) > 0:
                     opciones_limpias[0] = correcta_limpia
                     
@@ -234,23 +249,20 @@ elif st.session_state.estado == 'preguntas':
         
         radio_key = "q_" + str(i)
         
-        # El estudiante marca, pero si ya se evaluó, los botones se bloquean.
         respuesta = st.radio("Elige tu respuesta:", p.get('opciones', []), key=radio_key, index=None, disabled=st.session_state.evaluado)
         
         respuestas_usuario[i] = respuesta
         if respuesta is None:
             todas_respondidas = False
             
-        # Solo muestra la corrección SI ya presionó evaluar al final de la página
         if st.session_state.evaluado:
             if respuesta == p.get('respuesta_correcta', ''):
                 st.success("✨ ¡Correcto!")
             else:
-                st.error("❌ Casi... La correcta era: **" + str(p.get('respuesta_correcta', '')) + "**")
+                st.error("❌ Era casi... La correcta era: **" + str(p.get('respuesta_correcta', '')) + "**")
                 
         st.write("---")
         
-    # --- BOTÓN DE EVALUACIÓN FINAL ---
     if not st.session_state.evaluado:
         if st.button("✅ Revisar mis respuestas"):
             if todas_respondidas:
@@ -259,7 +271,6 @@ elif st.session_state.estado == 'preguntas':
             else:
                 st.warning("⚠️ ¡Espera! Te falta responder algunas preguntas. Revisa bien hacia arriba antes de entregar.")
     else:
-        # Calcular y mostrar el puntaje final
         puntaje = 0
         total_preguntas = len(st.session_state.preguntas)
         
@@ -277,8 +288,56 @@ elif st.session_state.estado == 'preguntas':
         else:
             st.warning("¡Buen intento! Con un poco más de práctica lo harás excelente, no te rindas. 💪")
             
+        # --- REPORTE DE VELOCIDAD LECTORA (PPM) ---
+        st.markdown("---")
+        st.subheader("📊 Reporte de Fluidez Lectora (Profesor)")
+        
+        # 1. Calcular Palabras por Minuto (PPM)
+        palabras = len(st.session_state.texto.split())
+        minutos_totales = st.session_state.tiempo_total / 60.0
+        ppm = int(palabras / minutos_totales) if minutos_totales > 0 else 0
+        
+        # 2. Diccionario base aproximado de PROLEC-R (PPM esperado por curso)
+        esperado_base = {
+            "1º Básico": 35,
+            "2º Básico": 60,
+            "3º Básico": 85,
+            "4º Básico": 100,
+            "5º Básico": 115,
+            "6º Básico": 125,
+            "7º Básico": 135,
+            "8º Básico": 145,
+            "Educación Media": 150
+        }
+        
+        curso = st.session_state.perfil_guardado['curso']
+        condicion = st.session_state.perfil_guardado['condicion']
+        edad = st.session_state.perfil_guardado['edad']
+        meta_ppm = esperado_base.get(curso, 85)
+        
+        # 3. Ajuste de expectativa de velocidad por condición neurológica/cognitiva
+        if condicion == "Discapacidad Intelectual Leve (DIL)":
+            meta_ppm = int(meta_ppm * 0.6) # Flexibilidad del 40%
+        elif condicion == "Trastorno por Déficit Atencional (TDAH)":
+            meta_ppm = int(meta_ppm * 0.8) # Flexibilidad del 20%
+        elif condicion == "DIL + TDAH":
+            meta_ppm = int(meta_ppm * 0.5) # Flexibilidad del 50%
+        elif condicion == "Otra":
+            meta_ppm = int(meta_ppm * 0.8) # Ajuste moderado por defecto
+            
+        st.write(f"**Perfil Evaluado:** {edad} años | {curso} | Condición: {condicion}")
+        st.write(f"**Métricas:** Leyó {palabras} palabras en {minutos} min y {segundos} seg.")
+        st.write(f"**Velocidad Alcanzada:** `{ppm} Palabras por Minuto (PPM)`")
+        
+        st.markdown("**Análisis según estándares (PROLEC-R adaptado):**")
+        if ppm >= meta_ppm:
+            st.success(f"🟢 **Velocidad Acorde/Óptima:** La fluidez lectora es adecuada para su curso y perfil (Expectativa mínima adaptada: {meta_ppm} PPM).")
+        elif ppm >= meta_ppm * 0.75:
+            st.warning(f"🟡 **En Desarrollo:** Velocidad ligeramente por debajo de lo esperado ({meta_ppm} PPM). Requiere estimulación moderada y lectura en conjunto.")
+        else:
+            st.error(f"🔴 **Lenta / Silábica:** Velocidad significativamente menor a lo esperado ({meta_ppm} PPM). Sugiere focalizar apoyo en decodificación y reconocimiento visual de palabras.")
+            
         if st.button("🔄 Leer otro texto"):
-            # Limpiamos todas las memorias MENOS la clave de la API
             for key in list(st.session_state.keys()):
                 if key != 'api_key_guardada':
                     del st.session_state[key]
