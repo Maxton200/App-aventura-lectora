@@ -260,7 +260,7 @@ elif st.session_state.estado == 'preguntas':
             if respuesta == p.get('respuesta_correcta', ''):
                 st.success("✨ ¡Correcto!")
             else:
-                st.error("❌ Era casi... La correcta era: **" + str(p.get('respuesta_correcta', '')) + "**")
+                st.error("❌ Casi... La correcta era: **" + str(p.get('respuesta_correcta', '')) + "**")
                 
         st.write("---")
         
