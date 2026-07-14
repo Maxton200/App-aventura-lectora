@@ -146,50 +146,56 @@ def limpiar_json(texto):
     raise ValueError("Formato JSON no encontrado en la respuesta.")
 
 # ==========================================
-# MOTOR IA ANTI-LÍMITES (FALLBACK STRATEGY CORREGIDO)
+# MOTOR IA ANTI-LÍMITES (BÚSQUEDA DINÁMICA)
 # ==========================================
 def solicitar_ia(prompt, JSON=False):
     """
-    Intenta pedirle una respuesta a la IA. Si el modelo se queda sin tokens (Error 429),
-    cambia automáticamente al siguiente modelo de la lista hasta encontrar uno que funcione.
+    Busca automáticamente los modelos que Google tiene activos en tu cuenta en este instante.
+    Si uno falla por cuota, salta al siguiente modelo real y existente.
     """
     genai.configure(api_key=st.session_state.api_key_guardada)
     
-    # Lista de modelos actualizada, eliminamos los obsoletos que daban error 404
-    modelos_respaldo = [
-        'gemini-1.5-flash',       # Modelo principal (1500 usos diarios)
-        'gemini-1.5-flash-8b',    # Alternativa rápida (1500 usos diarios)
-        'gemini-1.5-pro'          # Modelo de razonamiento (50 usos diarios)
-    ]
+    # 1. Le preguntamos a Google qué modelos existen realmente en tu cuenta hoy
+    modelos_disponibles = []
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                modelos_disponibles.append(m.name)
+    except Exception as e:
+        raise Exception(f"Error al conectar con Google para buscar modelos: {e}")
+        
+    # 2. Ordenamos la lista para que intente primero con los modelos "Flash" (los de 1500 usos diarios)
+    modelos_disponibles.sort(key=lambda x: 'flash' not in x.lower())
     
     ultimo_error = None
     
-    for nombre_modelo in modelos_respaldo:
+    # 3. Intentamos uno por uno
+    for nombre_modelo in modelos_disponibles:
         try:
             model = genai.GenerativeModel(nombre_modelo)
             if JSON:
-                # Intenta forzar formato JSON nativo si el modelo lo soporta
+                # Intenta forzar formato JSON nativo
                 try: 
                     respuesta = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
                     return respuesta.text
                 except: 
-                    pass # Si no soporta el parámetro, sigue de la forma normal
+                    pass 
             
             respuesta = model.generate_content(prompt)
             return respuesta.text
             
         except Exception as e:
             ultimo_error = str(e).lower()
-            # Si el error es 429 (Cuota) o 404 (No encontrado), salta al siguiente
-            if "429" in ultimo_error or "quota" in ultimo_error or "404" in ultimo_error or "not found" in ultimo_error or "exhausted" in ultimo_error or "503" in ultimo_error:
-                time.sleep(1) # Pequeña pausa
+            # Si se acaba el saldo (429) o hay fallos de red, salta al siguiente
+            if "429" in ultimo_error or "quota" in ultimo_error or "404" in ultimo_error or "503" in ultimo_error:
+                time.sleep(0.5)
                 continue
             else:
-                # Si es un error de clave inválida o similar, frena aquí.
+                # Fallos graves (como clave borrada) frenan aquí
                 raise e
                 
-    # Si todos los modelos fallaron por falta de cuota:
-    raise Exception(f"Todos los modelos de Inteligencia Artificial de Google han agotado su cuota gratuita por hoy. Por favor, intenta de nuevo más tarde o mañana. (Último error: {ultimo_error})")
+    # Si probó TODOS los modelos reales y todos fallaron por cuota:
+    raise Exception(f"Se ha agotado el saldo gratuito de todos los modelos de IA en tu cuenta. Intenta mañana o genera una clave nueva con otro correo. (Último error: {ultimo_error})")
 
 def generar_reporte_html(nombre, edad, curso, condicion, ppm, puntaje, total, diag):
     fecha = datetime.now().strftime("%d/%m/%Y")
