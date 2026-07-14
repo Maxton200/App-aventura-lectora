@@ -87,7 +87,7 @@ def guardar_historial(data):
 
 if 'bd_alumnos' not in st.session_state: st.session_state.bd_alumnos = cargar_historial()
 
-# --- MEMORIA DE LA SESIÓN BLINDADA (BUG FIX 3) ---
+# --- MEMORIA DE LA SESIÓN BLINDADA ---
 DEFAULTS = {
     'estado': 'configuracion',
     'tiempo_inicio': 0.0,
@@ -107,7 +107,8 @@ DEFAULTS = {
     'aventura_paso': 0,
     'aventura_opciones': [],
     'respuestas_usuario': {},
-    'eleccion': ""
+    'eleccion': "",
+    'modo_demo': False
 }
 
 for k, v in DEFAULTS.items():
@@ -118,7 +119,7 @@ if 'api_key_guardada' not in st.session_state:
     try: st.session_state.api_key_guardada = st.secrets.get("GOOGLE_API_KEY", "")
     except: st.session_state.api_key_guardada = ""
 
-# --- FUNCIONES DE APOYO ---
+# --- FUNCIONES DE APOYO Y MOCKING ---
 def formato_bionico(texto):
     palabras = texto.split()
     res = []
@@ -138,7 +139,6 @@ def generar_audio(texto):
     except: return None
 
 def limpiar_json(texto):
-    # BUG FIX 2: Extractor Quirúrgico de JSON a prueba de palabrería de IA
     texto = str(texto).strip()
     inicio = texto.find('[')
     fin = texto.rfind(']') + 1
@@ -146,12 +146,34 @@ def limpiar_json(texto):
         return texto[inicio:fin]
     raise ValueError("Formato JSON no encontrado en la respuesta.")
 
-def obtener_ia():
-    genai.configure(api_key=st.session_state.api_key_guardada)
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods and 'flash' in m.name.lower():
-            return genai.GenerativeModel(m.name)
-    return genai.GenerativeModel('gemini-pro')
+def obtener_respuesta_mock(tipo):
+    time.sleep(1.5) # Simula el tiempo de carga realista
+    if tipo == "analisis": 
+        return "El texto tiene un nivel de complejidad adecuado. Usa oraciones cortas y vocabulario concreto, ideal para el perfil del estudiante."
+    if tipo == "simplificador": 
+        return "Había una vez un perrito muy feliz. El perrito corría por el parque verde. Le gustaba jugar con su pelota roja todo el día."
+    if tipo == "cuento": 
+        tema = st.session_state.texto_original if st.session_state.texto_original else "aventura"
+        return f"Había una vez un gran héroe que quería descubrir los secretos de '{tema}'. Viajó por muchos lugares fantásticos hasta que por fin encontró lo que tanto buscaba. Fue muy feliz."
+    if tipo == "aventura_inicio": 
+        tema = st.session_state.texto_original if st.session_state.texto_original else "el misterio"
+        return json.dumps([{"texto": f"Empieza la gran historia sobre '{tema}'. Vas caminando por el bosque y llegas a una encrucijada. ¿Qué decides hacer ahora?", "opcion_a": "Ir por el camino oscuro", "opcion_b": "Cruzar el puente de madera"}])
+    if tipo == "diccionario": 
+        return json.dumps([
+            {"palabra": "Encrucijada", "definicion": "Cruce de caminos donde debes elegir por dónde ir.", "emoji": "🔀"},
+            {"palabra": "Descubrir", "definicion": "Encontrar algo que estaba escondido o que no conocías.", "emoji": "🔍"},
+            {"palabra": "Misterio", "definicion": "Algo difícil de entender o explicar.", "emoji": "🕵️‍♂️"}
+        ])
+    if tipo == "aventura_final": 
+        return "Tomaste una decisión muy valiente. Caminaste por un rato, encontraste un tesoro brillante y regresaste a casa a salvo. Fin de la aventura."
+    if tipo == "preguntas": 
+        return json.dumps([
+            {"pregunta": "¿Qué encontró el personaje al final de su aventura?", "opciones": ["Un tesoro brillante", "Un castillo oscuro", "Una cueva vacía"], "respuesta_correcta": "Un tesoro brillante", "explicacion": "El texto dice claramente que después de tomar la decisión, encontró un tesoro brillante."},
+            {"pregunta": "¿Cómo se sintió el héroe al terminar su viaje?", "opciones": ["Muy feliz", "Triste", "Enojado"], "respuesta_correcta": "Muy feliz", "explicacion": "La historia menciona que el personaje fue muy feliz tras lograr su objetivo."},
+            {"pregunta": "¿A dónde llegó el personaje al caminar por el bosque?", "opciones": ["A una encrucijada", "A un río profundo", "A una montaña"], "respuesta_correcta": "A una encrucijada", "explicacion": "El cuento relata que caminando por el bosque se topó con una encrucijada y tuvo que elegir un camino."},
+            {"pregunta": "¿Qué debió hacer el personaje en la encrucijada?", "opciones": ["Tomar una decisión", "Dormir", "Comer"], "respuesta_correcta": "Tomar una decisión", "explicacion": "El texto dice '¿Qué decides hacer ahora?', indicando que debía elegir."},
+            {"pregunta": "¿Qué opinas de la decisión del personaje?", "opciones": ["Fue muy valiente", "Fue aburrida", "Fue mala"], "respuesta_correcta": "Fue muy valiente", "explicacion": "El texto final señala que tomaste una decisión muy valiente."}
+        ])
 
 def generar_reporte_html(nombre, edad, curso, condicion, ppm, puntaje, total, diag):
     fecha = datetime.now().strftime("%d/%m/%Y")
@@ -177,7 +199,7 @@ def generar_reporte_html(nombre, edad, curso, condicion, ppm, puntaje, total, di
     return f'<a href="data:text/html;base64,{b64}" download="Reporte_Lectura_{nombre.replace(" ","_")}.html"><button style="background:#0284C7; color:white; padding:15px; border:none; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; width:100%;">📥 Descargar Informe Completo (PDF/HTML)</button></a>'
 
 def reiniciar_app(mantener_perfil=True):
-    mantener = ['api_key_guardada', 'bd_alumnos']
+    mantener = ['api_key_guardada', 'bd_alumnos', 'modo_demo']
     if mantener_perfil: mantener.append('perfil_activo')
     for k in list(st.session_state.keys()):
         if k not in mantener:
@@ -187,11 +209,57 @@ def reiniciar_app(mantener_perfil=True):
             st.session_state[k] = v
     st.rerun()
 
+def solicitar_ia(prompt, JSON=False):
+    """Busca dinámicamente qué modelos de IA funcionan en tu cuenta para saltarse los bloqueos o límites (Fallback)"""
+    if st.session_state.modo_demo: return "" 
+    
+    genai.configure(api_key=st.session_state.api_key_guardada)
+    modelos_disponibles = []
+    
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                modelos_disponibles.append(m.name)
+    except Exception as e:
+        raise Exception(f"Error al conectar con Google: {e}")
+        
+    modelos_disponibles.sort(key=lambda x: 'flash' not in x.lower())
+    
+    ultimo_error = None
+    for nombre_modelo in modelos_disponibles:
+        try:
+            model = genai.GenerativeModel(nombre_modelo)
+            if JSON:
+                try: 
+                    respuesta = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+                    return respuesta.text
+                except: 
+                    pass 
+            
+            respuesta = model.generate_content(prompt)
+            return respuesta.text
+            
+        except Exception as e:
+            ultimo_error = str(e).lower()
+            if "429" in ultimo_error or "quota" in ultimo_error or "404" in ultimo_error or "503" in ultimo_error:
+                time.sleep(0.5)
+                continue
+            else:
+                raise e
+                
+    raise Exception(f"Se ha agotado el saldo gratuito de todos los modelos de IA en tu cuenta. Intenta mañana o activa el Modo Demo. (Error: {ultimo_error})")
+
 # ==========================================
 # BARRA LATERAL (GESTIÓN)
 # ==========================================
 with st.sidebar:
     st.title("👨‍🏫 Panel Docente")
+    st.markdown("---")
+    
+    st.session_state.modo_demo = st.toggle("🛠️ Modo Demostración (Sin IA)", value=st.session_state.modo_demo)
+    if st.session_state.modo_demo:
+        st.success("Modo Demo Activo: Respuestas y funciones automáticas pre-cargadas sin consumir saldo de Google.")
+        
     st.markdown("---")
     st.subheader("👥 Gestión de Alumnos")
     opciones_alumnos = ["➕ Crear Nuevo Perfil..."] + list(st.session_state.bd_alumnos.keys())
@@ -242,7 +310,7 @@ if st.session_state.estado == 'configuracion':
     Para que las preguntas y cuentos se generen solos, necesitas una Llave de Google (Gratuita).<br>
     1. Entra a <a href="https://aistudio.google.com/" target="_blank" style="font-weight:bold;">aistudio.google.com</a> e inicia sesión con tu Gmail normal.<br>
     2. Haz clic en el botón azul <b>"Get API key"</b> (arriba a la izquierda) y luego en <b>"Create API key"</b>.<br>
-    3. Copia el código largo que te dará y pégalo en la casilla de abajo.
+    3. Copia el código largo que te dará y pégalo en la casilla de abajo. <i>(O activa el Modo Demo en el panel izquierdo para probar la app).</i>
     </div>
     """, unsafe_allow_html=True)
 
@@ -257,26 +325,33 @@ if st.session_state.estado == 'configuracion':
         al = st.session_state.perfil_activo
         
         with tab1:
-            # BUG 1 FIX: Memoria desvinculada del "key" directo de la caja
             texto_base = st.text_area("Pega el texto de lectura original aquí:", value=st.session_state.texto_libre, height=150)
             st.session_state.texto_libre = texto_base
             
             c1, c2 = st.columns(2)
             if c1.button("🔍 Análisis Predictivo"):
-                if texto_base.strip() and st.session_state.api_key_guardada:
+                if texto_base.strip() and (st.session_state.api_key_guardada or st.session_state.modo_demo):
                     with st.spinner("Analizando complejidad..."):
-                        ia = obtener_ia()
-                        resp = ia.generate_content(f"Analiza si este texto es apto para un niño de {al['edad']} años con {al['condicion']}. Sé breve (2 líneas). Texto: {texto_base}")
-                        st.info(f"**Análisis:** {resp.text}")
+                        if st.session_state.modo_demo:
+                            resp_text = obtener_respuesta_mock("analisis")
+                        else:
+                            try: resp_text = solicitar_ia(f"Analiza si este texto es apto para un niño de {al['edad']} años con {al['condicion']}. Sé breve (2 líneas). Texto: {texto_base}")
+                            except Exception as e: resp_text = f"Error de IA: {e}"
+                        st.info(f"**Análisis:** {resp_text}")
                 else: st.warning("Falta pegar el texto o la Clave IA.")
                 
             if c2.button("🪄 Simplificador Mágico (Diseño Universal)"):
-                if texto_base.strip() and st.session_state.api_key_guardada:
+                if texto_base.strip() and (st.session_state.api_key_guardada or st.session_state.modo_demo):
                     with st.spinner("Adaptando texto para el estudiante..."):
-                        ia = obtener_ia()
-                        resp = ia.generate_content(f"Reescribe este texto usando oraciones cortas y lenguaje extremadamente simple para un niño con {al['condicion']}. Texto: {texto_base}")
-                        st.session_state.texto_libre = resp.text.strip()
-                        st.rerun() # Actualiza instantáneamente la caja de arriba sin crashear
+                        if st.session_state.modo_demo:
+                            st.session_state.texto_libre = obtener_respuesta_mock("simplificador")
+                            st.rerun() 
+                        else:
+                            try:
+                                respuesta = solicitar_ia(f"Reescribe este texto usando oraciones cortas y lenguaje extremadamente simple para un niño con {al['condicion']}. Texto: {texto_base}")
+                                st.session_state.texto_libre = respuesta.strip()
+                                st.rerun() 
+                            except Exception as e: st.error(f"Error de IA: {e}")
                 else: st.warning("Falta pegar el texto o la Clave IA.")
             
             if st.button("🚀 Usar este texto", type="primary"):
@@ -373,8 +448,8 @@ if st.session_state.estado == 'configuracion':
                 st.session_state.estado = 'lectura'
                 st.rerun()
             else:
-                if not st.session_state.api_key_guardada: 
-                    st.error("⚠️ Faltó poner la Clave de Google API (Sigue las instrucciones azules de arriba).")
+                if not st.session_state.api_key_guardada and not st.session_state.modo_demo: 
+                    st.error("⚠️ Faltó poner la Clave de Google API o activar el Modo Demo (Panel izquierdo).")
                     st.session_state.ajustes['modo'] = None
                 elif not st.session_state.texto_original: 
                     st.warning("⚠️ Falta agregar el texto o tema en la pestaña elegida.")
@@ -389,7 +464,6 @@ if st.session_state.estado == 'configuracion':
 elif st.session_state.estado == 'procesando_ia':
     st.title("⏳ El Robot Profesor está preparando la magia...")
     barra = st.progress(0)
-    ia = obtener_ia()
     al = st.session_state.perfil_activo
     modo = st.session_state.ajustes['modo']
     
@@ -397,13 +471,20 @@ elif st.session_state.estado == 'procesando_ia':
         barra.progress(25)
         if modo == "generado":
             st.write("Escribiendo cuento personalizado...")
-            prompt_t = f"Escribe un cuento corto (max 150 palabras) sobre '{st.session_state.texto_original}' para un niño de {al['edad']} años con {al['condicion']}. Súper simple."
-            st.session_state.texto_lectura = ia.generate_content(prompt_t).text.strip()
+            if st.session_state.modo_demo:
+                st.session_state.texto_lectura = obtener_respuesta_mock("cuento")
+            else:
+                prompt_t = f"Escribe un cuento corto (max 150 palabras) sobre '{st.session_state.texto_original}' para un niño de {al['edad']} años con {al['condicion']}. Súper simple."
+                st.session_state.texto_lectura = solicitar_ia(prompt_t).strip()
             
         elif modo == "aventura":
             st.write("Creando el universo de la aventura...")
-            prompt_a = f"Inicia un cuento sobre '{st.session_state.texto_original}' para un niño. Escribe 2 párrafos y termina dando 2 opciones (A y B) sobre qué hacer. Devuelve estrictamente un JSON válido: [{{\"texto\": \"...\", \"opcion_a\": \"...\", \"opcion_b\": \"...\"}}]"
-            respuesta = ia.generate_content(prompt_a).text
+            if st.session_state.modo_demo:
+                respuesta = obtener_respuesta_mock("aventura_inicio")
+            else:
+                prompt_a = f"Inicia un cuento sobre '{st.session_state.texto_original}' para un niño. Escribe 2 párrafos y termina dando 2 opciones (A y B) sobre qué hacer. Devuelve estrictamente un JSON válido: [{{\"texto\": \"...\", \"opcion_a\": \"...\", \"opcion_b\": \"...\"}}]"
+                respuesta = solicitar_ia(prompt_a, JSON=True)
+                
             resp = json.loads(limpiar_json(respuesta))[0]
             st.session_state.texto_lectura = resp['texto']
             st.session_state.aventura_opciones = [resp['opcion_a'], resp['opcion_b']]
@@ -413,9 +494,12 @@ elif st.session_state.estado == 'procesando_ia':
         barra.progress(50)
         if st.session_state.ajustes['diccionario'] and modo != "manual":
             st.write("Buscando las palabras más difíciles...")
-            prompt_d = f"Extrae las 3 palabras más difíciles de este texto. Devuelve estrictamente un JSON válido: [{{\"palabra\":\"x\", \"definicion\":\"y\", \"emoji\":\"😎\"}}]. Texto: {st.session_state.texto_lectura}"
-            try: st.session_state.diccionario = json.loads(limpiar_json(ia.generate_content(prompt_d).text))
-            except: st.session_state.diccionario = []
+            if st.session_state.modo_demo:
+                st.session_state.diccionario = json.loads(obtener_respuesta_mock("diccionario"))
+            else:
+                prompt_d = f"Extrae las 3 palabras más difíciles de este texto. Devuelve estrictamente un JSON válido: [{{\"palabra\":\"x\", \"definicion\":\"y\", \"emoji\":\"😎\"}}]. Texto: {st.session_state.texto_lectura}"
+                try: st.session_state.diccionario = json.loads(limpiar_json(solicitar_ia(prompt_d, JSON=True)))
+                except: st.session_state.diccionario = []
             
         barra.progress(100)
         
@@ -425,10 +509,9 @@ elif st.session_state.estado == 'procesando_ia':
         st.rerun()
         
     except Exception as e:
-        st.error(f"Error de conexión: Verifica que tu Clave API de Google sea correcta.")
-        with st.expander("Ver detalle técnico (Para el profesor)"):
-            st.code(str(e))
-        if st.button("Volver al inicio"): reiniciar_app(mantener_perfil=True)
+        st.error(f"Error de conexión con la IA. Es posible que tu cuota gratuita se haya agotado.")
+        with st.expander("Ver detalle técnico (Para el profesor)"): st.code(str(e))
+        if st.button("Volver al inicio", type="primary"): reiniciar_app(mantener_perfil=True)
 
 # ==========================================
 # PANTALLA 3: DICCIONARIO PRE-LECTURA
@@ -520,8 +603,12 @@ elif st.session_state.estado == 'resolviendo_aventura':
     st.title("✨ Escribiendo tu destino...")
     with st.spinner("La IA está inventando el final basado en tu decisión..."):
         try:
-            ia = obtener_ia()
-            final = ia.generate_content(f"Continuación del cuento: {st.session_state.texto_lectura}. El niño eligió: '{st.session_state.eleccion}'. Escribe el final de la historia. Corto y simple.").text.strip()
+            if st.session_state.modo_demo: 
+                respuesta_av = obtener_respuesta_mock("aventura_final")
+            else:
+                respuesta_av = solicitar_ia(f"Continuación del cuento: {st.session_state.texto_lectura}. El niño eligió: '{st.session_state.eleccion}'. Escribe el final de la historia. Corto y simple.")
+                
+            final = respuesta_av.strip()
             st.session_state.texto_lectura += "\n\n***\n\n**TÚ DECIDISTE:** " + st.session_state.eleccion + "\n\n" + final
             st.session_state.aventura_paso = 1
             st.session_state.tiempo_inicio = float(time.time())
@@ -529,6 +616,7 @@ elif st.session_state.estado == 'resolviendo_aventura':
             st.rerun()
         except Exception as e:
             st.error("Error al conectar con la IA para continuar la aventura.")
+            with st.expander("Ver detalle técnico"): st.code(str(e))
             if st.button("Volver al inicio"): reiniciar_app(mantener_perfil=True)
 
 # ==========================================
@@ -540,9 +628,7 @@ elif st.session_state.estado == 'creando_preguntas':
     for i in range(100): time.sleep(0.01); barra.progress(i + 1)
     
     with st.spinner("Analizando texto para generar retroalimentación educativa..."):
-        ia = obtener_ia()
         al = st.session_state.perfil_activo
-        
         prompt = f"""
         Eres un sistema estricto. Genera EXACTAMENTE 5 preguntas de comprensión lectora sobre el texto para un estudiante con {al['condicion']}. Nivel: {st.session_state.ajustes['dificultad']}.
         
@@ -550,15 +636,16 @@ elif st.session_state.estado == 'creando_preguntas':
         1. Devuelve ÚNICAMENTE un arreglo JSON válido. NO escribas saludos, comentarios ni nada extra.
         2. Formato exacto a respetar:
         [
-            {{"pregunta": "¿...?", "opciones": ["A", "B", "C"], "respuesta_correcta": "A", "explicacion": "Explicación breve y amable."}}
+            {{"pregunta": "¿...?", "opciones": ["A", "B", "C"], "respuesta_correcta": "A", "explicacion": "Breve explicación."}}
         ]
-        REGLA DE ORO: 'respuesta_correcta' debe coincidir EXACTAMENTE con una de las 'opciones'.
         
         Texto: {st.session_state.texto_lectura}
         """
         try:
-            try: respuesta_cruda = ia.generate_content(prompt, generation_config={"response_mime_type": "application/json"}).text
-            except: respuesta_cruda = ia.generate_content(prompt).text
+            if st.session_state.modo_demo: 
+                respuesta_cruda = obtener_respuesta_mock("preguntas")
+            else:
+                respuesta_cruda = solicitar_ia(prompt, JSON=True)
                 
             texto_limpio = limpiar_json(respuesta_cruda)
             preguntas = json.loads(texto_limpio)
@@ -578,23 +665,20 @@ elif st.session_state.estado == 'creando_preguntas':
             st.rerun()
             
         except Exception as e:
-            # BUG 2 FIX FINAL: Aviso amable con botón de reintento. Sin borrar la lectura ni el tiempo.
-            st.error("🚨 La Inteligencia Artificial se enredó un poco armando las preguntas.")
-            st.info("¡No te preocupes! El progreso del estudiante y el tiempo medido están a salvo. Puedes intentar generarlas de nuevo.")
+            st.error("🚨 Hubo un problema al crear las preguntas o se agotó el saldo de IA.")
+            st.info("¡No te preocupes! El progreso del estudiante y el tiempo medido están a salvo. Puedes intentar generarlas de nuevo o encender el Modo Demo.")
             
             with st.expander("Ver detalle técnico (Para el profesor)"):
                 st.code(str(e))
                 if 'respuesta_cruda' in locals():
-                    st.write("Lo que respondió la IA:")
+                    st.write("Respuesta cruda:")
                     st.text(respuesta_cruda)
                     
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("🔄 Volver a intentar generar preguntas", type="primary"):
-                    st.rerun()
+                if st.button("🔄 Volver a intentar generar preguntas", type="primary"): st.rerun()
             with col2:
-                if st.button("🏠 Cancelar y volver al inicio"):
-                    reiniciar_app()
+                if st.button("🏠 Cancelar y volver al inicio"): reiniciar_app(mantener_perfil=True)
 
 # ==========================================
 # PANTALLA 6: PREGUNTAS Y REPORTE
