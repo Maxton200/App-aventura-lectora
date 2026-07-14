@@ -146,7 +146,7 @@ def limpiar_json(texto):
     raise ValueError("Formato JSON no encontrado en la respuesta.")
 
 # ==========================================
-# MOTOR IA ANTI-LÍMITES (FALLBACK STRATEGY)
+# MOTOR IA ANTI-LÍMITES (FALLBACK STRATEGY CORREGIDO)
 # ==========================================
 def solicitar_ia(prompt, JSON=False):
     """
@@ -155,14 +155,11 @@ def solicitar_ia(prompt, JSON=False):
     """
     genai.configure(api_key=st.session_state.api_key_guardada)
     
-    # Lista de modelos de mayor a menor capacidad/velocidad (todos gratuitos)
+    # Lista de modelos actualizada, eliminamos los obsoletos que daban error 404
     modelos_respaldo = [
         'gemini-1.5-flash',       # Modelo principal (1500 usos diarios)
         'gemini-1.5-flash-8b',    # Alternativa rápida (1500 usos diarios)
-        'gemini-1.5-pro',         # Modelo de razonamiento (50 usos diarios)
-        'gemini-2.0-flash-exp',   # Modelo experimental reciente
-        'gemini-2.5-flash',       # Solo 20 usos al día
-        'gemini-pro'              # Modelo clásico de emergencia
+        'gemini-1.5-pro'          # Modelo de razonamiento (50 usos diarios)
     ]
     
     ultimo_error = None
@@ -183,7 +180,7 @@ def solicitar_ia(prompt, JSON=False):
             
         except Exception as e:
             ultimo_error = str(e).lower()
-            # Si el error es 429 (Cuota excedida) o no se encuentra el modelo, ignóralo y pasa al siguiente modelo
+            # Si el error es 429 (Cuota) o 404 (No encontrado), salta al siguiente
             if "429" in ultimo_error or "quota" in ultimo_error or "404" in ultimo_error or "not found" in ultimo_error or "exhausted" in ultimo_error or "503" in ultimo_error:
                 time.sleep(1) # Pequeña pausa
                 continue
