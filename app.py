@@ -25,7 +25,7 @@ st.set_page_config(page_title="Aventura Lectora Premium", layout="wide", page_ic
 # --- DISEÑO VISUAL FLEXIBLE ---
 ESTILO_CSS = """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap');
+    @import url('[https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap](https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap)');
     html, body, [class*="css"]  { font-family: 'Nunito', sans-serif; }
     
     .tarjeta {
@@ -132,7 +132,53 @@ def generar_audio(texto):
         return f'<audio controls src="data:audio/mp3;base64,{b64}" style="width:100%; margin-bottom: 20px;"></audio>'
     except: return None
 
+# Truco matemático para evitar errores de sintaxis en GitHub
 def limpiar_json(texto):
     texto = texto.strip()
-    if "```json" in texto: texto = texto.split("```json")[1]
-    if "```" in texto: texto = texto.split("
+    marcador = chr(96) + chr(96) + chr(96) 
+    if marcador + "json" in texto: texto = texto.split(marcador + "json")[1]
+    if marcador in texto: texto = texto.split(marcador)[0]
+    inicio = texto.find('[')
+    fin = texto.rfind(']') + 1
+    return texto[inicio:fin] if inicio != -1 else texto
+
+def obtener_ia():
+    genai.configure(api_key=st.session_state.api_key_guardada)
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods and 'flash' in m.name.lower():
+            return genai.GenerativeModel(m.name)
+    return genai.GenerativeModel('gemini-pro')
+
+def generar_reporte_html(nombre, edad, curso, condicion, ppm, puntaje, total, diag):
+    fecha = datetime.now().strftime("%d/%m/%Y")
+    html = f"""
+    <html><head><meta charset="utf-8"><style>body{{font-family: Arial; padding: 40px; color: #333; line-height: 1.6; background-color: white;}} .caja{{border: 2px solid #4CAF50; padding: 30px; border-radius: 15px;}} h1{{color: #2E7D32; text-align: center;}}</style></head>
+    <body>
+        <div class="caja">
+            <h1>📄 Reporte Psicopedagógico PIE</h1>
+            <p><b>Alumno:</b> {nombre} ({edad} años) &nbsp;&nbsp;|&nbsp;&nbsp; <b>Fecha:</b> {fecha}</p>
+            <p><b>Curso:</b> {curso} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Condición:</b> {condicion}</p>
+            <hr>
+            <h3>📊 Resultados de la Evaluación</h3>
+            <p><b>Velocidad Lectora:</b> {ppm} Palabras por Minuto (PPM).</p>
+            <p><b>Comprensión Lectora:</b> {puntaje} respuestas correctas de {total}.</p>
+            <hr>
+            <h3>🧠 Análisis PROLEC-R (Adaptado)</h3>
+            <p>{diag}</p>
+            <br><p><i>Generado automáticamente por Aventura Lectora Premium.</i></p>
+        </div>
+    </body></html>
+    """
+    b64 = base64.b64encode(html.encode('utf-8')).decode('utf-8')
+    return f'<a href="data:text/html;base64,{b64}" download="Reporte_Lectura_{nombre.replace(" ","_")}.html"><button style="background:#0284C7; color:white; padding:15px; border:none; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; width:100%;">📥 Descargar Informe Completo (PDF/HTML)</button></a>'
+
+# ==========================================
+# BARRA LATERAL (GESTIÓN)
+# ==========================================
+with st.sidebar:
+    st.title("👨‍🏫 Panel Docente")
+    
+    st.markdown("---")
+    st.subheader("👥 Gestión de Alumnos")
+    opciones_alumnos = ["➕ Crear Nuevo Perfil..."] + list(st.session_state.bd_alumnos.keys())
+    seleccion = st.selectbox("Seleccionar Alumno:", opciones
