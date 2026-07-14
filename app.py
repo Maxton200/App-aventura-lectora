@@ -87,7 +87,7 @@ def guardar_historial(data):
 
 if 'bd_alumnos' not in st.session_state: st.session_state.bd_alumnos = cargar_historial()
 
-# --- MEMORIA DE LA SESIÓN BLINDADA (BUG FIX 2) ---
+# --- MEMORIA DE LA SESIÓN BLINDADA (BUG FIX 3) ---
 DEFAULTS = {
     'estado': 'configuracion',
     'tiempo_inicio': 0.0,
@@ -97,16 +97,16 @@ DEFAULTS = {
     'perfil_activo': None,
     'texto_original': "",
     'texto_lectura': "",
+    'texto_libre': "",
+    'texto_manual': "",
+    'tema_generado': "",
+    'tema_aventura': "",
     'ajustes': {},
     'diccionario': [],
     'fragmento_idx': 0,
     'aventura_paso': 0,
     'aventura_opciones': [],
     'respuestas_usuario': {},
-    'texto_input_area': "",
-    'tema_generado': "",
-    'tema_aventura': "",
-    'texto_manual_area': "",
     'eleccion': ""
 }
 
@@ -138,12 +138,13 @@ def generar_audio(texto):
     except: return None
 
 def limpiar_json(texto):
-    texto = texto.strip()
-    if "```json" in texto: texto = texto.split("```json")[1]
-    if "```" in texto: texto = texto.split("```")[0]
+    # BUG FIX 2: Extractor Quirúrgico de JSON a prueba de palabrería de IA
+    texto = str(texto).strip()
     inicio = texto.find('[')
     fin = texto.rfind(']') + 1
-    return texto[inicio:fin] if inicio != -1 else texto
+    if inicio != -1 and fin > inicio:
+        return texto[inicio:fin]
+    raise ValueError("Formato JSON no encontrado en la respuesta.")
 
 def obtener_ia():
     genai.configure(api_key=st.session_state.api_key_guardada)
@@ -178,10 +179,12 @@ def generar_reporte_html(nombre, edad, curso, condicion, ppm, puntaje, total, di
 def reiniciar_app(mantener_perfil=True):
     mantener = ['api_key_guardada', 'bd_alumnos']
     if mantener_perfil: mantener.append('perfil_activo')
-    
     for k in list(st.session_state.keys()):
         if k not in mantener:
             del st.session_state[k]
+    for k, v in DEFAULTS.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
     st.rerun()
 
 # ==========================================
@@ -254,54 +257,58 @@ if st.session_state.estado == 'configuracion':
         al = st.session_state.perfil_activo
         
         with tab1:
-            # BUG FIX 1: Caja de texto unida al session_state directamente
-            st.text_area("Pega el texto de lectura aquí:", height=150, key="texto_input_area")
-            c1, c2 = st.columns(2)
+            # BUG 1 FIX: Memoria desvinculada del "key" directo de la caja
+            texto_base = st.text_area("Pega el texto de lectura original aquí:", value=st.session_state.texto_libre, height=150)
+            st.session_state.texto_libre = texto_base
             
+            c1, c2 = st.columns(2)
             if c1.button("🔍 Análisis Predictivo"):
-                if st.session_state.texto_input_area and st.session_state.api_key_guardada:
+                if texto_base.strip() and st.session_state.api_key_guardada:
                     with st.spinner("Analizando complejidad..."):
                         ia = obtener_ia()
-                        resp = ia.generate_content(f"Analiza si este texto es apto para un niño de {al['edad']} años con {al['condicion']}. Sé breve (2 líneas). Texto: {st.session_state.texto_input_area}")
+                        resp = ia.generate_content(f"Analiza si este texto es apto para un niño de {al['edad']} años con {al['condicion']}. Sé breve (2 líneas). Texto: {texto_base}")
                         st.info(f"**Análisis:** {resp.text}")
                 else: st.warning("Falta pegar el texto o la Clave IA.")
                 
-            if c2.button("🪄 Simplificador Mágico"):
-                if st.session_state.texto_input_area and st.session_state.api_key_guardada:
-                    with st.spinner("Adaptando texto (DUA)..."):
+            if c2.button("🪄 Simplificador Mágico (Diseño Universal)"):
+                if texto_base.strip() and st.session_state.api_key_guardada:
+                    with st.spinner("Adaptando texto para el estudiante..."):
                         ia = obtener_ia()
-                        resp = ia.generate_content(f"Reescribe este texto usando oraciones cortas y lenguaje extremadamente simple para un niño con {al['condicion']}. Texto: {st.session_state.texto_input_area}")
-                        st.session_state.texto_input_area = resp.text.strip()
-                        st.rerun() # Recarga y muestra el nuevo texto automáticamente
+                        resp = ia.generate_content(f"Reescribe este texto usando oraciones cortas y lenguaje extremadamente simple para un niño con {al['condicion']}. Texto: {texto_base}")
+                        st.session_state.texto_libre = resp.text.strip()
+                        st.rerun() # Actualiza instantáneamente la caja de arriba sin crashear
                 else: st.warning("Falta pegar el texto o la Clave IA.")
             
             if st.button("🚀 Usar este texto", type="primary"):
-                if st.session_state.texto_input_area.strip():
-                    st.session_state.texto_original = st.session_state.texto_input_area
+                if st.session_state.texto_libre.strip():
+                    st.session_state.texto_original = st.session_state.texto_libre
                     st.session_state.ajustes['modo'] = "normal"
                 else: st.warning("Pega un texto en la caja primero.")
 
         with tab2:
             st.write("La IA escribirá un texto desde cero adaptado a la edad y condición del alumno.")
-            st.text_input("Tema del cuento (Ej: Un gato detective, Los dinosaurios):", key="tema_generado")
+            tema_gen = st.text_input("Tema del cuento (Ej: Un gato detective, Los dinosaurios):", value=st.session_state.tema_generado)
+            st.session_state.tema_generado = tema_gen
             if st.button("✨ Crear y Usar Cuento", type="primary"):
-                if st.session_state.tema_generado.strip():
-                    st.session_state.texto_original = st.session_state.tema_generado
+                if tema_gen.strip():
+                    st.session_state.texto_original = tema_gen
                     st.session_state.ajustes['modo'] = "generado"
                 else: st.warning("Escribe un tema primero.")
                 
         with tab3:
             st.info("La IA creará la introducción. A la mitad, el alumno tomará una decisión y la IA inventará el final en vivo.")
-            st.text_input("¿Sobre qué será la aventura? (Ej: Exploradores en la selva):", key="tema_aventura")
+            tema_av = st.text_input("¿Sobre qué será la aventura? (Ej: Exploradores en la selva):", value=st.session_state.tema_aventura)
+            st.session_state.tema_aventura = tema_av
             if st.button("🗺️ Iniciar Aventura Interactiva", type="primary"):
-                if st.session_state.tema_aventura.strip():
-                    st.session_state.texto_original = st.session_state.tema_aventura
+                if tema_av.strip():
+                    st.session_state.texto_original = tema_av
                     st.session_state.ajustes['modo'] = "aventura"
                 else: st.warning("Escribe un tema primero.")
                 
         with tab4:
             st.info("💡 Tú escribes las preguntas. No se usará Inteligencia Artificial.")
-            st.text_area("Pega el texto de lectura aquí (Modo Manual):", height=150, key="texto_manual_area")
+            texto_man = st.text_area("Pega el texto de lectura aquí (Modo Manual):", value=st.session_state.texto_manual, height=150)
+            st.session_state.texto_manual = texto_man
             preguntas_manuales = []
             for i in range(5): 
                 with st.expander(f"Pregunta {i+1}", expanded=(i==0)):
@@ -312,7 +319,7 @@ if st.session_state.estado == 'configuracion':
                     preguntas_manuales.append({"q": q, "c": c, "f1": f1, "f2": f2})
                     
             if st.button("🚀 Iniciar Actividad Manual", type="primary"):
-                if st.session_state.texto_manual_area.strip() and preguntas_manuales[0]["q"] and preguntas_manuales[0]["c"]:
+                if texto_man.strip() and preguntas_manuales[0]["q"] and preguntas_manuales[0]["c"]:
                     lista_final = []
                     for p in preguntas_manuales:
                         if p["q"] and p["c"]:
@@ -327,7 +334,7 @@ if st.session_state.estado == 'configuracion':
                             })
                     if len(lista_final) > 0:
                         st.session_state.preguntas = lista_final
-                        st.session_state.texto_original = st.session_state.texto_manual_area
+                        st.session_state.texto_original = texto_man
                         st.session_state.ajustes['modo'] = "manual"
                 else:
                     st.warning("Completa el texto y al menos la primera pregunta.")
@@ -358,10 +365,11 @@ if st.session_state.estado == 'configuracion':
             
             st.session_state.tiempo_inicio = 0.0
             st.session_state.tiempo_total = 0.0
+            st.session_state.fragmento_idx = 0
+            st.session_state.aventura_paso = 0
             
             if modo_elegido == "manual":
                 st.session_state.texto_lectura = st.session_state.texto_original
-                st.session_state.fragmento_idx = 0
                 st.session_state.estado = 'lectura'
                 st.rerun()
             else:
@@ -394,8 +402,9 @@ elif st.session_state.estado == 'procesando_ia':
             
         elif modo == "aventura":
             st.write("Creando el universo de la aventura...")
-            prompt_a = f"Inicia un cuento sobre '{st.session_state.texto_original}' para un niño. Escribe 2 párrafos y termina dando 2 opciones (A y B) sobre qué hacer. Devuelve JSON: [{{\"texto\": \"...\", \"opcion_a\": \"...\", \"opcion_b\": \"...\"}}]"
-            resp = json.loads(limpiar_json(ia.generate_content(prompt_a).text))[0]
+            prompt_a = f"Inicia un cuento sobre '{st.session_state.texto_original}' para un niño. Escribe 2 párrafos y termina dando 2 opciones (A y B) sobre qué hacer. Devuelve estrictamente un JSON válido: [{{\"texto\": \"...\", \"opcion_a\": \"...\", \"opcion_b\": \"...\"}}]"
+            respuesta = ia.generate_content(prompt_a).text
+            resp = json.loads(limpiar_json(respuesta))[0]
             st.session_state.texto_lectura = resp['texto']
             st.session_state.aventura_opciones = [resp['opcion_a'], resp['opcion_b']]
         else:
@@ -404,15 +413,11 @@ elif st.session_state.estado == 'procesando_ia':
         barra.progress(50)
         if st.session_state.ajustes['diccionario'] and modo != "manual":
             st.write("Buscando las palabras más difíciles...")
-            prompt_d = f"Extrae las 3 palabras más difíciles de este texto. Devuelve JSON: [{{\"palabra\":\"x\", \"definicion\":\"y\", \"emoji\":\"😎\"}}]. Texto: {st.session_state.texto_lectura}"
+            prompt_d = f"Extrae las 3 palabras más difíciles de este texto. Devuelve estrictamente un JSON válido: [{{\"palabra\":\"x\", \"definicion\":\"y\", \"emoji\":\"😎\"}}]. Texto: {st.session_state.texto_lectura}"
             try: st.session_state.diccionario = json.loads(limpiar_json(ia.generate_content(prompt_d).text))
             except: st.session_state.diccionario = []
             
         barra.progress(100)
-        st.session_state.tiempo_inicio = 0.0
-        st.session_state.tiempo_total = 0.0
-        st.session_state.fragmento_idx = 0
-        st.session_state.aventura_paso = 0
         
         if st.session_state.ajustes['diccionario'] and st.session_state.diccionario:
             st.session_state.estado = 'pre_lectura'
@@ -420,7 +425,9 @@ elif st.session_state.estado == 'procesando_ia':
         st.rerun()
         
     except Exception as e:
-        st.error(f"Error de conexión: Verifica que tu Clave API de Google sea correcta. Detalle: {e}")
+        st.error(f"Error de conexión: Verifica que tu Clave API de Google sea correcta.")
+        with st.expander("Ver detalle técnico (Para el profesor)"):
+            st.code(str(e))
         if st.button("Volver al inicio"): reiniciar_app(mantener_perfil=True)
 
 # ==========================================
@@ -448,7 +455,7 @@ elif st.session_state.estado == 'lectura':
     if st.session_state.tiempo_inicio == 0.0:
         st.info("Acomódate, y cuando estés listo, presiona el botón. ¡Tómate todo tu tiempo!")
         if st.button("▶️ Empezar a leer", type="primary"):
-            st.session_state.tiempo_inicio = time.time()
+            st.session_state.tiempo_inicio = float(time.time())
             st.rerun()
     else:
         texto_mostrar = st.session_state.texto_lectura
@@ -483,22 +490,22 @@ elif st.session_state.estado == 'lectura':
             if col1.button("🅰️ " + st.session_state.aventura_opciones[0], use_container_width=True):
                 st.session_state.eleccion = st.session_state.aventura_opciones[0]
                 st.session_state.estado = 'resolviendo_aventura'
-                if st.session_state.tiempo_inicio > 0:
-                    st.session_state.tiempo_total += (time.time() - st.session_state.tiempo_inicio)
+                if st.session_state.tiempo_inicio > 0.0:
+                    st.session_state.tiempo_total += float(time.time() - st.session_state.tiempo_inicio)
                     st.session_state.tiempo_inicio = 0.0
                 st.rerun()
             if col2.button("🅱️ " + st.session_state.aventura_opciones[1], use_container_width=True):
                 st.session_state.eleccion = st.session_state.aventura_opciones[1]
                 st.session_state.estado = 'resolviendo_aventura'
-                if st.session_state.tiempo_inicio > 0:
-                    st.session_state.tiempo_total += (time.time() - st.session_state.tiempo_inicio)
+                if st.session_state.tiempo_inicio > 0.0:
+                    st.session_state.tiempo_total += float(time.time() - st.session_state.tiempo_inicio)
                     st.session_state.tiempo_inicio = 0.0
                 st.rerun()
         else:
             if st.button("✅ ¡Terminé de leer!", type="primary", use_container_width=True):
-                if st.session_state.tiempo_inicio > 0:
-                    st.session_state.tiempo_total += (time.time() - st.session_state.tiempo_inicio)
-                    st.session_state.tiempo_inicio = 0.0 # BUG FIX 2 blindado
+                if st.session_state.tiempo_inicio > 0.0:
+                    st.session_state.tiempo_total += float(time.time() - st.session_state.tiempo_inicio)
+                    st.session_state.tiempo_inicio = 0.0
                 
                 if st.session_state.ajustes['modo'] == 'manual':
                     st.session_state.estado = 'preguntas'
@@ -517,13 +524,12 @@ elif st.session_state.estado == 'resolviendo_aventura':
             final = ia.generate_content(f"Continuación del cuento: {st.session_state.texto_lectura}. El niño eligió: '{st.session_state.eleccion}'. Escribe el final de la historia. Corto y simple.").text.strip()
             st.session_state.texto_lectura += "\n\n***\n\n**TÚ DECIDISTE:** " + st.session_state.eleccion + "\n\n" + final
             st.session_state.aventura_paso = 1
-            st.session_state.tiempo_inicio = time.time()
+            st.session_state.tiempo_inicio = float(time.time())
             st.session_state.estado = 'lectura'
             st.rerun()
         except Exception as e:
             st.error("Error al conectar con la IA para continuar la aventura.")
-            if st.button("Volver al inicio"):
-                reiniciar_app()
+            if st.button("Volver al inicio"): reiniciar_app(mantener_perfil=True)
 
 # ==========================================
 # PANTALLA 5: CREANDO PREGUNTAS
@@ -538,33 +544,57 @@ elif st.session_state.estado == 'creando_preguntas':
         al = st.session_state.perfil_activo
         
         prompt = f"""
-        Genera 5 preguntas de comprensión lectora sobre este texto para un niño con {al['condicion']}. Nivel: {st.session_state.ajustes['dificultad']}.
-        Devuelve SOLO un JSON exacto:
+        Eres un sistema estricto. Genera EXACTAMENTE 5 preguntas de comprensión lectora sobre el texto para un estudiante con {al['condicion']}. Nivel: {st.session_state.ajustes['dificultad']}.
+        
+        INSTRUCCIONES OBLIGATORIAS:
+        1. Devuelve ÚNICAMENTE un arreglo JSON válido. NO escribas saludos, comentarios ni nada extra.
+        2. Formato exacto a respetar:
         [
-            {{"pregunta": "¿?", "opciones": ["A", "B", "C"], "respuesta_correcta": "A", "explicacion": "Explicación muy amable del porqué esa es la respuesta correcta."}}
+            {{"pregunta": "¿...?", "opciones": ["A", "B", "C"], "respuesta_correcta": "A", "explicacion": "Explicación breve y amable."}}
         ]
-        El valor 'respuesta_correcta' debe ser idéntico a una de las 'opciones'.
+        REGLA DE ORO: 'respuesta_correcta' debe coincidir EXACTAMENTE con una de las 'opciones'.
+        
         Texto: {st.session_state.texto_lectura}
         """
         try:
-            preguntas = json.loads(limpiar_json(ia.generate_content(prompt).text))
+            try: respuesta_cruda = ia.generate_content(prompt, generation_config={"response_mime_type": "application/json"}).text
+            except: respuesta_cruda = ia.generate_content(prompt).text
+                
+            texto_limpio = limpiar_json(respuesta_cruda)
+            preguntas = json.loads(texto_limpio)
+            
             for p in preguntas:
-                opc = [str(o).strip() for o in p["opciones"]]
-                corr = str(p["respuesta_correcta"]).strip()
-                if corr not in opc: opc[0] = corr
+                opc = [str(o).strip() for o in p.get("opciones", [])]
+                corr = str(p.get("respuesta_correcta", "")).strip()
+                if corr not in opc and len(opc) > 0: opc[0] = corr
                 random.shuffle(opc)
                 p["opciones"] = opc
                 p["respuesta_correcta"] = corr
+                
             st.session_state.preguntas = preguntas
-            
             st.session_state.respuestas_usuario = {}
             st.session_state.evaluado = False
             st.session_state.estado = 'preguntas'
             st.rerun()
-        except:
-            st.error("Error al crear preguntas. Volviendo al inicio...")
-            time.sleep(2)
-            reiniciar_app()
+            
+        except Exception as e:
+            # BUG 2 FIX FINAL: Aviso amable con botón de reintento. Sin borrar la lectura ni el tiempo.
+            st.error("🚨 La Inteligencia Artificial se enredó un poco armando las preguntas.")
+            st.info("¡No te preocupes! El progreso del estudiante y el tiempo medido están a salvo. Puedes intentar generarlas de nuevo.")
+            
+            with st.expander("Ver detalle técnico (Para el profesor)"):
+                st.code(str(e))
+                if 'respuesta_cruda' in locals():
+                    st.write("Lo que respondió la IA:")
+                    st.text(respuesta_cruda)
+                    
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Volver a intentar generar preguntas", type="primary"):
+                    st.rerun()
+            with col2:
+                if st.button("🏠 Cancelar y volver al inicio"):
+                    reiniciar_app()
 
 # ==========================================
 # PANTALLA 6: PREGUNTAS Y REPORTE
@@ -572,6 +602,9 @@ elif st.session_state.estado == 'creando_preguntas':
 elif st.session_state.estado == 'preguntas':
     st.title("🕵️‍♂️ Misión de Comprensión")
     
+    if 'respuestas_usuario' not in st.session_state or st.session_state.respuestas_usuario is None: 
+        st.session_state.respuestas_usuario = {}
+        
     todas_listas = True
     
     for i, p in enumerate(st.session_state.preguntas):
@@ -617,8 +650,8 @@ elif st.session_state.estado == 'preguntas':
         st.markdown("---")
         st.subheader("📊 Zona del Docente (Reporte Final)")
         
-        minutos_mostrar = int(st.session_state.tiempo_total // 60)
-        segundos_mostrar = int(st.session_state.tiempo_total % 60)
+        minutos_mostrar = int(float(st.session_state.tiempo_total) // 60)
+        segundos_mostrar = int(float(st.session_state.tiempo_total) % 60)
         st.write(f"**Tiempo de lectura:** {minutos_mostrar} min y {segundos_mostrar} seg. | **Velocidad:** {ppm} PPM (Meta perfilada: {meta_ppm} PPM)")
         st.write(f"**Análisis:** {diag}")
         
@@ -636,4 +669,4 @@ elif st.session_state.estado == 'preguntas':
             st.markdown(html_reporte, unsafe_allow_html=True)
         
         if st.button("🔄 Volver al Inicio y Leer Otro Cuento"):
-            reiniciar_app()
+            reiniciar_app(mantener_perfil=True)
